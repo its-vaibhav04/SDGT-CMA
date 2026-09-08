@@ -124,7 +124,7 @@ def test_committed_notebook_matches_its_source():
     import sys
 
     sys.path.insert(0, str(ROOT / "scripts"))
-    from build_notebook import build
+    from scripts.build_notebook import build
 
     expected = build(ROOT / "notebooks/kaggle_run_grid.py")
     committed = json.loads(
