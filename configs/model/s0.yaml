@@ -1,0 +1,6 @@
+# S0 -- static distance graph, concatenation. The conventional reference point.
+name: s0_static_concat
+model:
+  graph: {type: static}
+  spatial: {type: gcn}
+  fusion: {type: concat}

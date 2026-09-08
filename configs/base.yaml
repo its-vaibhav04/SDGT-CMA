@@ -1,0 +1,59 @@
+# Shared by every configuration. Model configs override only the three fields
+# that define the experiment grid: model.graph.type, model.spatial.type and
+# model.fusion.type. Anything else differing between them breaks attribution.
+seed: 42
+
+data:
+  city: beijing
+  lookback: 48          # swept over {24, 48, 96, 168}; lag-168 autocorrelation is 0.023
+  horizon: 24           # direct multi-horizon, evaluated at 1/6/12/24
+  patch_length: 8
+  patch_stride: 8       # non-overlapping -> Np = 6
+
+model:
+  d_model: 64
+  n_heads: 4
+  dropout: 0.1
+  temporal:
+    type: patch_transformer   # patch_transformer | tcn
+    n_layers: 3
+    ffn_mult: 4
+  graph:
+    type: none                # none | static | dynamic
+    lag_max: 6                # 0 recovers a same-hour graph
+    lag_min: 1
+    top_k: 4
+    distance_scale_km: 20.0
+    speed_scale: 2.0
+    min_speed: 0.5
+    calm_threshold: 1.0e-3
+  spatial:
+    type: none                # none | gcn | wind_gat
+    n_layers: 2
+    edge_dropout: 0.1
+  fusion:
+    type: none                # none | concat | cross_view
+  head:
+    hidden: 256
+
+train:
+  batch_size: 64
+  epochs: 100
+  grad_clip: 1.0
+  optimizer:
+    name: adamw
+    lr: 1.0e-3
+    weight_decay: 1.0e-4
+  scheduler:
+    name: cosine
+    warmup_epochs: 5
+  loss:
+    name: huber             # huber | l1
+    delta: 1.0
+  early_stopping:
+    monitor: val_mae_mean
+    patience: 10
+
+eval:
+  horizons: [1, 6, 12, 24]
+  save_diagnostics: true

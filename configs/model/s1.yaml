@@ -1,0 +1,7 @@
+# S1 -- static distance graph, cross-view fusion.
+# S0 -> S1 isolates the fusion, with the graph held fixed.
+name: s1_static_crossview
+model:
+  graph: {type: static}
+  spatial: {type: gcn}
+  fusion: {type: cross_view}

@@ -1,0 +1,8 @@
+# D0 -- lag-aware wind graph, concatenation.
+# S0 -> D0 isolates the graph, with fusion held fixed. This is the headline
+# comparison, and the one the paired bootstrap is run on.
+name: d0_wind_concat
+model:
+  graph: {type: dynamic}
+  spatial: {type: wind_gat}
+  fusion: {type: concat}

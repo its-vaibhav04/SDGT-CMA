@@ -1,0 +1,44 @@
+.venv/
+venv/
+__pycache__/
+*.py[cod]
+.pytest_cache/
+.mypy_cache/
+.ruff_cache/
+.ipynb_checkpoints/
+
+# Data and generated experiment artifacts
+data/raw/*
+data/processed/*
+data/interim/*
+experiments/runs/*
+experiments/checkpoints/*
+experiments/logs/*
+!data/raw/.gitkeep
+!data/processed/.gitkeep
+!data/interim/.gitkeep
+!experiments/runs/.gitkeep
+!experiments/checkpoints/.gitkeep
+!experiments/logs/.gitkeep
+
+# Local environment files
+.env
+.env.*
+!.env.example
+
+# Build artifacts
+*.egg-info/
+build/
+dist/
+
+# Figures are regenerable from saved runs
+experiments/figures/*
+!experiments/figures/.gitkeep
+
+# notebooks/kaggle_run_grid.ipynb IS committed: it is uploaded to Kaggle as-is,
+# so it has to exist in the repo. Regenerate it with scripts/build_notebook.py
+# whenever the .py source changes; tests/test_repository.py checks they agree.
+
+# Working-tree snapshots for upload
+sdgt-cma.zip
+*.tar.gz

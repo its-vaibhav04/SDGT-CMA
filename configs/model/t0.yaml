@@ -1,0 +1,6 @@
+# T0 -- temporal only. Answers: is a graph needed at all?
+name: t0_temporal_only
+model:
+  graph: {type: none}
+  spatial: {type: none}
+  fusion: {type: none}

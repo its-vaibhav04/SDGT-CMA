@@ -1,0 +1,7 @@
+# D1 -- the full proposed model: lag-aware wind graph plus cross-view fusion.
+# D0 -> D1 re-tests the fusion on the dynamic graph.
+name: d1_wind_crossview
+model:
+  graph: {type: dynamic}
+  spatial: {type: wind_gat}
+  fusion: {type: cross_view}
