@@ -118,10 +118,45 @@ def plot(
     return style.save(fig, slug, root)
 
 
-# Baselines that exist to establish a floor, not to compete. Drawn as one muted
+# Baselines that establish a floor rather than compete. Drawn as one muted
 # reference group so the contended range stays readable and no categorical hue is
 # ever reused -- a cycled palette makes two unrelated series look like a pair.
 REFERENCE_MODELS = ("seasonal_naive_24h", "seasonal_naive_168h", "climatology")
+FLOOR_MODEL = "persistence"
+
+
+def _group_by_model(runs: Sequence[Predictions]) -> dict[str, list[Predictions]]:
+    """Collect runs of the same configuration across seeds, in a stable order."""
+    grouped: dict[str, list[Predictions]] = {}
+    for run in runs:
+        grouped.setdefault(run.model, []).append(run)
+    for group in grouped.values():
+        group.sort(key=lambda r: r.seed)
+    return grouped
+
+
+def _curves(
+    group: Sequence[Predictions], horizons: Sequence[int], metric: str
+) -> tuple[list[float], list[float], list[float]]:
+    """Mean, min and max across seeds at each horizon.
+
+    Min/max rather than a standard deviation: with three seeds the range is the
+    honest summary, and a one-sigma band on n=3 implies a precision that is not
+    there.
+    """
+    from src.metrics import ALL_METRICS
+
+    fn = ALL_METRICS[metric]
+    per_seed = [
+        [fn(r.pred[:, :, h - 1], r.truth[:, :, h - 1], r.mask[:, :, h - 1]) for h in horizons]
+        for r in group
+    ]
+    columns = list(zip(*per_seed))
+    return (
+        [float(np.mean(c)) for c in columns],
+        [float(np.min(c)) for c in columns],
+        [float(np.max(c)) for c in columns],
+    )
 
 
 def error_by_horizon(
@@ -131,56 +166,86 @@ def error_by_horizon(
     metric: str = "mae",
     name: str = "error_by_horizon",
     root: Path | str = style.FIGURE_ROOT,
-) -> Path:
-    """Error against forecast horizon, one line per contending model.
+    references: Sequence[str] = (),
+) -> list[Path]:
+    """Error against forecast horizon, one line per *configuration*.
 
-    The core quantitative figure. Persistence is dashed because it is the floor
-    every other model must clear to be worth reporting; the weaker naive
-    baselines collapse into a single grey reference group.
+    Runs of the same configuration under different seeds are averaged, with the
+    seed range drawn as a band -- fifteen separate lines for five configurations
+    is not a figure, and the spread is exactly what a reader needs to judge
+    whether two configurations differ at all.
+
+    Persistence is the dashed floor. The naive baselines collapse into one grey
+    group. ``references`` nominates further models to draw as neutral reference
+    lines rather than coloured series: LightGBM belongs there, because it is the
+    bar the grid has to clear, not a member of the factorial.
+
+    Returns the paths written -- more than one if the contenders had to be split
+    across figures. It never raises for having too many series; killing the last
+    cell of a multi-hour run over a palette limit is the wrong failure mode.
     """
     import matplotlib.pyplot as plt
 
-    from src.metrics import ALL_METRICS
-
     style.apply_style()
-    fn = ALL_METRICS[metric]
+    grouped = _group_by_model(runs)
 
-    def curve(run):
-        return [
-            fn(run.pred[:, :, h - 1], run.truth[:, :, h - 1], run.mask[:, :, h - 1])
-            for h in horizons
-        ]
+    neutral = set(REFERENCE_MODELS) | set(references)
+    contenders = [m for m in grouped if m not in neutral and m != FLOOR_MODEL]
+    contenders.sort()
 
-    contenders = [r for r in runs if r.model not in REFERENCE_MODELS and r.model != "persistence"]
-    persistence = [r for r in runs if r.model == "persistence"]
-    references = [r for r in runs if r.model in REFERENCE_MODELS]
+    limit = len(style.SERIES)
+    chunks = [contenders[i : i + limit] for i in range(0, len(contenders), limit)] or [[]]
+    written: list[Path] = []
 
-    if len(contenders) > len(style.SERIES):
-        raise ValueError(
-            f"{len(contenders)} contending models exceeds the {len(style.SERIES)}-colour "
-            "palette; split into small multiples rather than cycling hues"
-        )
+    for chunk_index, chunk in enumerate(chunks):
+        fig, ax = plt.subplots(figsize=(7.8, 4.8))
+        drew_naive = False
 
-    fig, ax = plt.subplots(figsize=(7.5, 4.6))
+        for model in REFERENCE_MODELS:
+            if model not in grouped:
+                continue
+            mean, _, _ = _curves(grouped[model], horizons, metric)
+            ax.plot(horizons, mean, color=style.REFERENCE, linewidth=1.2, linestyle=":",
+                    alpha=0.7, label="naive reference" if not drew_naive else None, zorder=1)
+            drew_naive = True
 
-    for index, run in enumerate(references):
-        ax.plot(horizons, curve(run), color=style.REFERENCE, linewidth=1.2,
-                linestyle=":", marker="", alpha=0.7,
-                label="naive reference" if index == 0 else None, zorder=1)
+        for model in references:
+            if model not in grouped:
+                continue
+            mean, _, _ = _curves(grouped[model], horizons, metric)
+            # Neutral, never a categorical hue: a reference line sharing a
+            # colour with a series reads as though the two are related.
+            ax.plot(horizons, mean, color=style.REFERENCE_STRONG, linewidth=1.8,
+                    linestyle="-.", marker="s", markersize=4,
+                    label=f"{model} (bar to clear)", zorder=2)
 
-    for run in persistence:
-        ax.plot(horizons, curve(run), color=style.TRUTH, linewidth=1.8,
-                linestyle="--", marker="o", markersize=5, label="persistence", zorder=2)
+        if FLOOR_MODEL in grouped:
+            mean, _, _ = _curves(grouped[FLOOR_MODEL], horizons, metric)
+            ax.plot(horizons, mean, color=style.TRUTH, linewidth=1.8, linestyle="--",
+                    marker="o", markersize=5, label=FLOOR_MODEL, zorder=3)
 
-    for index, run in enumerate(contenders):
-        ax.plot(horizons, curve(run), color=style.SERIES[index], linewidth=2.0,
-                marker="o", markersize=5, label=run.model, zorder=3)
+        for index, model in enumerate(chunk):
+            group = grouped[model]
+            mean, low, high = _curves(group, horizons, metric)
+            colour = style.SERIES[index]
+            if len(group) > 1:
+                ax.fill_between(horizons, low, high, color=colour, alpha=0.16,
+                                linewidth=0, zorder=3)
+            label = model if len(group) == 1 else f"{model}  ({len(group)} seeds)"
+            ax.plot(horizons, mean, color=colour, linewidth=2.0, marker="o",
+                    markersize=5, label=label, zorder=4)
 
-    ax.set_xticks(list(horizons))
-    ax.set_xlabel("forecast horizon (hours ahead)")
-    ax.set_ylabel(f"{metric.upper()} (μg/m³)")
-    ax.set_title(f"{metric.upper()} by forecast horizon")
-    ax.set_ylim(bottom=0)
-    ax.legend(loc="lower right", ncols=2)
+        ax.set_xticks(list(horizons))
+        ax.set_xlabel("forecast horizon (hours ahead)")
+        ax.set_ylabel(f"{metric.upper()} (μg/m³)")
+        seeded = any(len(grouped[m]) > 1 for m in chunk)
+        subtitle = "\nline = mean across seeds, band = seed range" if seeded else ""
+        ax.set_title(f"{metric.upper()} by forecast horizon{subtitle}")
+        ax.set_ylim(bottom=0)
+        if ax.get_legend_handles_labels()[0]:
+            ax.legend(loc="lower right", ncols=2, fontsize=8)
 
-    return style.save(fig, name, root)
+        suffix = "" if len(chunks) == 1 else f"_{chunk_index + 1}"
+        written.append(style.save(fig, f"{name}{suffix}", root))
+
+    return written

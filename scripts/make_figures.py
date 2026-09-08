@@ -34,6 +34,9 @@ from src.metrics import Predictions, masked_mae
 
 RUNS_ROOT = Path("experiments/runs")
 
+# Name prefixes of the experiment grid, used to separate it from the baselines.
+GRID_PREFIXES = {"t0", "s0", "d0", "s1", "d1"}
+
 # Test-split case studies, chosen in the evidence review.
 EPISODES = {
     "severe_2017_01_01": ("2016-12-29T00", "2017-01-05T00",
@@ -70,13 +73,38 @@ def main() -> None:
         raise SystemExit(f"no predictions found under {args.runs_root}")
     print(f"loaded {len(runs)} runs: {', '.join(r.model for r in runs)}\n")
 
-    print("error by horizon:")
-    forecast_trace.error_by_horizon(runs, metric="mae", name="error_by_horizon_mae")
-    forecast_trace.error_by_horizon(runs, metric="rmse", name="error_by_horizon_rmse")
+    # Two focused figures rather than one crowded one. The grid figure answers
+    # "did the architecture help"; the baseline figure answers "was any of this
+    # needed". Mixing eight configurations and seven baselines onto one axes
+    # answers neither.
+    grid = [r for r in runs if r.model.split("_")[0] in GRID_PREFIXES]
+    baselines = [r for r in runs if r.model.split("_")[0] not in GRID_PREFIXES]
 
-    # Episode traces use a readable subset -- ten overlapping lines is not a figure.
-    highlight = [r for r in runs if r.model in ("persistence", "ridge", "dlinear", "lightgbm")]
-    highlight = highlight or runs[:3]
+    print("error by horizon:")
+    if grid:
+        # The grid figure carries the five configurations plus exactly two
+        # context lines: persistence as the floor, LightGBM as the bar to clear.
+        # Ridge and DLinear belong in the baseline figure -- adding them here
+        # would push the grid past the palette and split it across two files.
+        context = [r for r in baselines if r.model in ("persistence", "lightgbm")]
+        for metric in ("mae", "rmse"):
+            forecast_trace.error_by_horizon(
+                grid + context,
+                metric=metric,
+                name=f"error_by_horizon_grid_{metric}",
+                references=("lightgbm",),
+            )
+    if baselines:
+        for metric in ("mae", "rmse"):
+            forecast_trace.error_by_horizon(
+                baselines, metric=metric, name=f"error_by_horizon_baselines_{metric}"
+            )
+
+    # Episode traces use a readable subset, one run per model -- ten overlapping
+    # lines is not a figure, and three seeds of the same model are three nearly
+    # identical lines.
+    wanted = ("persistence", "lightgbm", "d1_wind_crossview", "t0_temporal_only")
+    highlight = _one_run_per_model([r for r in runs if r.model in wanted]) or runs[:3]
 
     print("\nepisode traces:")
     for slug, (start, end, title) in EPISODES.items():
@@ -110,6 +138,15 @@ def main() -> None:
     print("\ndone")
 
 
+def _one_run_per_model(runs: Sequence[Predictions]) -> list[Predictions]:
+    """Lowest seed for each model name, so repeated seeds do not overplot."""
+    chosen: dict[str, Predictions] = {}
+    for run in runs:
+        if run.model not in chosen or run.seed < chosen[run.model].seed:
+            chosen[run.model] = run
+    return [chosen[name] for name in sorted(chosen)]
+
+
 def _best_run(runs: Sequence[Predictions]) -> Predictions | None:
     """Lowest mean MAE across the reported horizons."""
     scored = [
@@ -128,7 +165,7 @@ def _regime_figure(dataset, runs: Sequence[Predictions]) -> None:
     Prefers the headline pair (the graph in isolation); falls back to
     persistence against the best available model so the figure exists early.
     """
-    by_name = {r.model: r for r in runs}
+    by_name = {r.model: r for r in _one_run_per_model(runs)}
     for baseline, candidate in (
         ("s0_static_concat", "d0_wind_concat"),
         ("persistence", "lightgbm"),

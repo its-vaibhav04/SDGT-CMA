@@ -22,6 +22,7 @@ FIGURE_ROOT = Path("experiments/figures")
 SERIES = ["#1F6FB2", "#C2601A", "#2E8B5A", "#8E4BA6", "#B03A2E"]
 TRUTH = "#191A17"
 REFERENCE = "#82857C"
+REFERENCE_STRONG = "#4A4D46"   # a named baseline drawn as context, not as a series
 GRID = "#DFDCD4"
 
 # Sequential ramp for magnitude, single hue, light to dark.
