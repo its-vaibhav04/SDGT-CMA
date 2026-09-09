@@ -95,7 +95,8 @@ def run(run_dir: Path, n_samples: int = DEFAULT_SAMPLES, device_name: str | None
             [int(o) in keep for o in batch.origins.cpu().numpy()], device=device
         )
         output, diagnostics = model(
-            batch.features, batch.wind_uv, return_diagnostics=bool(wanted.any())
+            batch.features, batch.wind_uv, batch.anchor,
+            return_diagnostics=bool(wanted.any()),
         )
 
         predictions.append(output.cpu().numpy())

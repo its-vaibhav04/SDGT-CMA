@@ -90,6 +90,7 @@ def model_config_from(config: dict, dataset) -> ModelConfig:
         edge_dropout=model["spatial"].get("edge_dropout", 0.1),
         fusion=model["fusion"]["type"],
         head_hidden=model["head"].get("hidden", 256),
+        persistence_anchor=model["head"].get("persistence_anchor", True),
         graph_options={k: v for k, v in graph.items() if k != "type"},
     )
 
@@ -109,7 +110,7 @@ def evaluate(
 
     for batch in batcher:
         batch = batch.to(device)
-        output, _ = model(batch.features, batch.wind_uv)
+        output, _ = model(batch.features, batch.wind_uv, batch.anchor)
         loss = loss_fn(output, batch.target, batch.target_mask.float())
         total += float(loss) * len(batch)
         count += len(batch)
@@ -229,7 +230,7 @@ def train(
         running, seen = 0.0, 0
         for batch in batchers["train"]:
             batch = batch.to(device)
-            output, _ = model(batch.features, batch.wind_uv)
+            output, _ = model(batch.features, batch.wind_uv, batch.anchor)
             loss = loss_fn(output, batch.target, batch.target_mask.float())
 
             optimiser.zero_grad(set_to_none=True)

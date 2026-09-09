@@ -1,6 +1,13 @@
 # Shared by every configuration. Model configs override only the three fields
 # that define the experiment grid: model.graph.type, model.spatial.type and
 # model.fusion.type. Anything else differing between them breaks attribution.
+#
+# Capacity and schedule were revised after the first full grid, which overfitted
+# in every one of its 15 runs: training loss fell to a third of validation loss
+# and the best epoch was 0-5 out of 11-15. The training split holds only ~243
+# independent 3-day episodes, so 340k parameters was far too many, and a warmup
+# that ramps the rate *up* over five epochs meant the best checkpoint was always
+# the one with the smallest learning rate.
 seed: 42
 
 data:
@@ -11,12 +18,12 @@ data:
   patch_stride: 8       # non-overlapping -> Np = 6
 
 model:
-  d_model: 64
+  d_model: 32           # was 64; 340k params against ~243 episodes overfitted hard
   n_heads: 4
-  dropout: 0.1
+  dropout: 0.25         # was 0.1
   temporal:
     type: patch_transformer   # patch_transformer | tcn
-    n_layers: 3
+    n_layers: 2               # was 3
     ffn_mult: 4
   graph:
     type: none                # none | static | dynamic
@@ -30,29 +37,34 @@ model:
   spatial:
     type: none                # none | gcn | wind_gat
     n_layers: 2
-    edge_dropout: 0.1
+    edge_dropout: 0.15
   fusion:
     type: none                # none | concat | cross_view
   head:
-    hidden: 256
+    hidden: 128               # was 256
+    # Predict the change from the last observed value rather than the level.
+    # Without it the grid was twice as bad as persistence at h=1: PM2.5
+    # autocorrelation at one hour is 0.969, and a patch-pooled summary cannot
+    # recover the last hour precisely enough to compete.
+    persistence_anchor: true
 
 train:
   batch_size: 64
-  epochs: 100
+  epochs: 60
   grad_clip: 1.0
   optimizer:
     name: adamw
-    lr: 1.0e-3
-    weight_decay: 1.0e-4
+    lr: 3.0e-4          # was 1e-3
+    weight_decay: 1.0e-2  # was 1e-4
   scheduler:
     name: cosine
-    warmup_epochs: 5
+    warmup_epochs: 0    # was 5, and it was actively harmful -- see the note above
   loss:
     name: huber             # huber | l1
     delta: 1.0
   early_stopping:
     monitor: val_mae_mean
-    patience: 10
+    patience: 12
 
 eval:
   horizons: [1, 6, 12, 24]

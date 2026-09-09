@@ -42,3 +42,4 @@ experiments/figures/*
 # Working-tree snapshots for upload
 sdgt-cma.zip
 *.tar.gz
+experiments 2

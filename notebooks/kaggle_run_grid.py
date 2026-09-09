@@ -215,18 +215,19 @@ subprocess.run([sys.executable, "scripts/make_figures.py"], check=True)
 
 # %%
 # --- package the results for download ----------------------------------------
-# Everything needed to reproduce and audit: predictions, metrics, curves,
-# configs and environment snapshots. Checkpoints and the large diagnostics dump
-# are excluded -- both are regenerable from the saved config plus seed.
+# Everything needed to reproduce, audit and re-plot: predictions, diagnostics,
+# metrics, curves, configs and environment snapshots. Only checkpoints are left
+# out -- they are large and regenerable from the saved config plus seed.
+#
+# diagnostics.npz has to come back: without it the attention and gate figures
+# cannot be redrawn locally, and the first run shipped without it.
 import tarfile
 
 OUTPUT = "/kaggle/working/sdgt_results.tar.gz"
 with tarfile.open(OUTPUT, "w:gz") as archive:
     for directory in ("experiments/runs", "experiments/figures"):
         for path in Path(directory).rglob("*"):
-            if path.is_file() and path.suffix not in (".pt", ".npz"):
-                archive.add(path, arcname=str(path))
-            elif path.name == "predictions.npz":
+            if path.is_file() and path.suffix != ".pt":
                 archive.add(path, arcname=str(path))
 
 print(f"wrote {OUTPUT} ({Path(OUTPUT).stat().st_size / 1e6:.1f} MB)")

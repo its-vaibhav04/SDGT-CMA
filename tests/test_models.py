@@ -62,10 +62,12 @@ def make_config(**overrides) -> ModelConfig:
 
 
 def make_batch(batch_size: int = 4, seed: int = 0):
+    """Features, wind and the persistence anchor the head is offset from."""
     generator = torch.Generator().manual_seed(seed)
     features = torch.randn(batch_size, LOOKBACK, N_STATIONS, N_FEATURES, generator=generator)
     wind = torch.randn(batch_size, LOOKBACK, N_STATIONS, 2, generator=generator) * 3.0
-    return features, wind
+    anchor = torch.randn(batch_size, N_STATIONS, generator=generator)
+    return features, wind, anchor
 
 
 # ------------------------------------------------------------------- patching
@@ -114,8 +116,8 @@ def test_temporal_branch_shares_weights_across_stations():
 @pytest.mark.parametrize("name", list(CONFIGS))
 def test_every_configuration_produces_the_right_shape(name):
     model = build_model(make_config(**CONFIGS[name]))
-    features, wind = make_batch()
-    prediction, _ = model(features, wind)
+    features, wind, anchor = make_batch()
+    prediction, _ = model(features, wind, anchor)
     assert prediction.shape == (4, N_STATIONS, HORIZON)
     assert torch.isfinite(prediction).all()
 
@@ -124,8 +126,8 @@ def test_every_configuration_produces_the_right_shape(name):
 def test_gradients_reach_every_parameter(name):
     """A disconnected module trains silently and contributes nothing."""
     model = build_model(make_config(**CONFIGS[name]))
-    features, wind = make_batch()
-    prediction, _ = model(features, wind)
+    features, wind, anchor = make_batch()
+    prediction, _ = model(features, wind, anchor)
     prediction.sum().backward()
 
     missing = [
@@ -174,15 +176,15 @@ def test_perturbing_an_upwind_station_propagates_downwind():
     """
     model = build_model(make_config(**CONFIGS["D1"]))
     model.eval()
-    features, _ = make_batch(batch_size=1)
+    features, _, anchor = make_batch(batch_size=1)
     wind = torch.zeros(1, LOOKBACK, N_STATIONS, 2)
     wind[..., 0] = 6.0                                  # blowing east
 
     with torch.no_grad():
-        before, _ = model(features, wind)
+        before, _ = model(features, wind, anchor)
         perturbed = features.clone()
         perturbed[:, :, 0, :] += 5.0
-        after, _ = model(perturbed, wind)
+        after, _ = model(perturbed, wind, anchor)
 
     change = (after - before).abs().amax(dim=-1)[0]     # [N]
 
@@ -200,20 +202,20 @@ def test_influence_does_not_travel_upwind():
     """
     model = build_model(make_config(**CONFIGS["D1"]))
     model.eval()
-    features, _ = make_batch(batch_size=1)
+    features, _, anchor = make_batch(batch_size=1)
     wind = torch.zeros(1, LOOKBACK, N_STATIONS, 2)
     wind[..., 0] = 6.0                                  # blowing east
 
     with torch.no_grad():
-        before, _ = model(features, wind)
+        before, _ = model(features, wind, anchor)
 
         downstream = features.clone()
         downstream[:, :, -1, :] += 5.0                  # perturb the far downwind end
-        after_downstream, _ = model(downstream, wind)
+        after_downstream, _ = model(downstream, wind, anchor)
 
         upstream = features.clone()
         upstream[:, :, 0, :] += 5.0                     # perturb the far upwind end
-        after_upstream, _ = model(upstream, wind)
+        after_upstream, _ = model(upstream, wind, anchor)
 
     upwind_effect = float((after_downstream[0, 0] - before[0, 0]).abs().max())
     downwind_effect = float((after_upstream[0, 1] - before[0, 1]).abs().max())
@@ -228,10 +230,10 @@ def test_temporal_only_model_ignores_wind():
     """T0 has no graph, so the wind input must not reach the prediction at all."""
     model = build_model(make_config(**CONFIGS["T0"]))
     model.eval()
-    features, wind = make_batch(batch_size=1)
+    features, wind, anchor = make_batch(batch_size=1)
     with torch.no_grad():
-        a, _ = model(features, wind)
-        b, _ = model(features, wind * -3.0)
+        a, _ = model(features, wind, anchor)
+        b, _ = model(features, wind * -3.0, anchor)
     torch.testing.assert_close(a, b)
 
 
@@ -358,14 +360,14 @@ def test_model_can_overfit_a_tiny_batch(name):
     full training run."""
     torch.manual_seed(0)
     model = build_model(make_config(**CONFIGS[name], dropout=0.0, edge_dropout=0.0))
-    features, wind = make_batch(batch_size=8, seed=1)
+    features, wind, anchor = make_batch(batch_size=8, seed=1)
     target = torch.randn(8, N_STATIONS, HORIZON)
     mask = torch.ones_like(target)
 
     optimiser = torch.optim.Adam(model.parameters(), lr=3e-3)
     first = None
     for step in range(200):
-        prediction, _ = model(features, wind)
+        prediction, _ = model(features, wind, anchor)
         loss = masked_huber_loss(prediction, target, mask)
         if first is None:
             first = float(loss.detach())
@@ -376,3 +378,55 @@ def test_model_can_overfit_a_tiny_batch(name):
     assert float(loss) < first * 0.2, (
         f"{name}: loss only fell from {first:.4f} to {float(loss):.4f}"
     )
+
+
+# ------------------------------------------------------- the persistence anchor
+def test_anchor_makes_a_zero_head_equal_persistence():
+    """With the head's output zeroed, the forecast must be exactly persistence.
+
+    That is the whole point of the anchor: the model starts from the strongest
+    available prior -- PM2.5 autocorrelation at one hour is 0.969 -- and learns
+    only the deviation. Without it the first grid was twice as bad as
+    persistence at h=1.
+    """
+    model = build_model(make_config(**CONFIGS["T0"], dropout=0.0))
+    model.eval()
+    features, wind, anchor = make_batch(batch_size=2)
+
+    with torch.no_grad():
+        for parameter in model.head.net[-1].parameters():
+            parameter.zero_()
+        prediction, _ = model(features, wind, anchor)
+
+    expected = anchor.unsqueeze(-1).expand(-1, -1, HORIZON)
+    torch.testing.assert_close(prediction, expected, atol=1e-6, rtol=1e-5)
+
+
+def test_anchor_shifts_the_forecast_one_for_one():
+    """Adding a constant to the anchor must move the forecast by the same amount."""
+    model = build_model(make_config(**CONFIGS["D1"], dropout=0.0, edge_dropout=0.0))
+    model.eval()
+    features, wind, anchor = make_batch(batch_size=2)
+
+    with torch.no_grad():
+        base, _ = model(features, wind, anchor)
+        shifted, _ = model(features, wind, anchor + 1.5)
+
+    torch.testing.assert_close(shifted - base, torch.full_like(base, 1.5), atol=1e-5, rtol=1e-4)
+
+
+def test_missing_anchor_is_rejected_rather_than_silently_ignored():
+    model = build_model(make_config(**CONFIGS["T0"]))
+    features, wind, _ = make_batch(batch_size=1)
+    with pytest.raises(ValueError, match="anchor"):
+        model(features, wind)
+
+
+def test_anchor_can_be_disabled_for_the_ablation():
+    model = build_model(make_config(**CONFIGS["T0"], persistence_anchor=False))
+    model.eval()
+    features, wind, anchor = make_batch(batch_size=2)
+    with torch.no_grad():
+        a, _ = model(features, wind)
+        b, _ = model(features, wind, anchor)
+    torch.testing.assert_close(a, b), "a disabled anchor must be ignored entirely"

@@ -1,0 +1,12 @@
+# Capacity sweep on the full model. Run 1 overfitted at d=64 (340k parameters,
+# ~1,400 per independent training episode); the revised d=32 default trains
+# cleanly but finishes with training loss slightly above validation loss, which
+# hints at over-regularisation. This settles the size on evidence.
+name: cap_d24_wind_crossview
+model:
+  d_model: 24
+  temporal: {n_layers: 2}
+  head: {hidden: 96}
+  graph: {type: dynamic}
+  spatial: {type: wind_gat}
+  fusion: {type: cross_view}

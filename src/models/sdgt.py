@@ -73,6 +73,15 @@ class ModelConfig:
     fusion: str = "cross_view"      # none | concat | cross_view
 
     head_hidden: int = 256
+    # Predict the change from the last observed value rather than the level.
+    # PM2.5 autocorrelation at one hour is 0.969, so persistence is an extremely
+    # strong prior at short lead times; asking the head to rediscover it from a
+    # patch-pooled summary wastes capacity and measurably fails -- the
+    # level-predicting grid was 2x worse than persistence at h=1. With the anchor
+    # the model only has to learn the deviation, which is the part that is
+    # actually hard. Metrics are unaffected: the level is reconstructed before
+    # anything is scored.
+    persistence_anchor: bool = True
     graph_options: dict[str, Any] = field(default_factory=dict)
 
     def __post_init__(self) -> None:
@@ -147,17 +156,22 @@ class SDGT(nn.Module):
         self,
         features: torch.Tensor,
         wind_uv: torch.Tensor,
+        anchor: torch.Tensor | None = None,
         return_diagnostics: bool = False,
     ) -> tuple[torch.Tensor, dict[str, torch.Tensor]]:
         """
         Args:
             features: ``[B, L, N, F]`` scaled model inputs.
             wind_uv: ``[B, L, N, 2]`` raw m/s, direction of motion.
+            anchor: ``[B, N]`` last observed target, in target units. Required
+                when ``persistence_anchor`` is set.
 
         Returns:
             ``(prediction [B, N, tau], diagnostics)``. Diagnostics are empty
             unless requested.
         """
+        if self.config.persistence_anchor and anchor is None:
+            raise ValueError("persistence_anchor is enabled but no anchor was supplied")
         hidden = self.embedding(features)                      # [B, L, N, d]
         temporal = self.temporal(hidden)                       # [B, N, Np, d]
 
@@ -193,7 +207,13 @@ class SDGT(nn.Module):
         if return_diagnostics:
             diagnostics.update(fusion_diagnostics)
 
-        return self.head(fused), diagnostics
+        prediction = self.head(fused)
+        if self.config.persistence_anchor:
+            # The head now carries the change from the last observation, so the
+            # forecast is persistence plus a learned correction.
+            prediction = prediction + anchor.unsqueeze(-1)
+
+        return prediction, diagnostics
 
     # -------------------------------------------------------------- reporting
     def parameter_counts(self) -> dict[str, int]:

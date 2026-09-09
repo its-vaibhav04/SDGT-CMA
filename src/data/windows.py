@@ -85,6 +85,7 @@ class Batch:
     target: torch.Tensor       # [B, N, tau]  standardised
     target_mask: torch.Tensor  # [B, N, tau]  bool
     origins: torch.Tensor      # [B]          int64, index into the hour axis
+    anchor: torch.Tensor       # [B, N]       standardised PM2.5 at the origin hour
 
     def to(self, device: torch.device | str) -> "Batch":
         return Batch(
@@ -93,6 +94,7 @@ class Batch:
             target=self.target.to(device),
             target_mask=self.target_mask.to(device),
             origins=self.origins.to(device),
+            anchor=self.anchor.to(device),
         )
 
     def __len__(self) -> int:
@@ -135,6 +137,11 @@ class WindowTensors:
             target=target.permute(0, 2, 1).contiguous(),               # [B, N, tau]
             target_mask=mask.permute(0, 2, 1).contiguous(),            # [B, N, tau]
             origins=origins,
+            # The last observed value, in the same units as the target. A
+            # persistence-anchored head predicts the change from this rather
+            # than the level, which is what the 1-hour horizon actually needs.
+            # Zero where unobserved, which is the dataset mean once standardised.
+            anchor=self.target_scaled[origins],                        # [B, N]
         )
 
 
@@ -222,6 +229,7 @@ class WindowDataset(Dataset):
             "target": batch.target[0],
             "target_mask": batch.target_mask[0],
             "origin": batch.origins[0],
+            "anchor": batch.anchor[0],
         }
 
 
