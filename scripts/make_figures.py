@@ -29,7 +29,7 @@ from typing import Sequence
 import numpy as np
 
 from src.data import contract
-from src.figures import diagnostics, forecast_trace, graph_map
+from src.figures import diagnostics, forecast_trace, graph_map, training
 from src.metrics import Predictions, masked_mae
 
 RUNS_ROOT = Path("experiments/runs")
@@ -132,6 +132,19 @@ def main() -> None:
         print("\nper-station errors:")
         diagnostics.station_error_map(dataset, best, horizon=args.horizon)
 
+    # Training curves are the figure Run 1 was missing: fifteen runs memorising
+    # in plain sight, visible only in a CSV nobody had plotted.
+    print("\ntraining diagnostics:")
+    training.loss_curves(args.runs_root)
+    training.convergence_bars(args.runs_root)
+
+    # Where the error lives. The headline MAE hides that every model regresses
+    # to the mean on severe hours; this is the panel an early-warning system is
+    # actually judged on.
+    if highlight:
+        print("\nerror by observed level:")
+        diagnostics.error_by_level(highlight, horizon=args.horizon)
+
     _regime_figure(dataset, runs)
     _diagnostic_figures(dataset, args.runs_root)
 
@@ -185,6 +198,10 @@ def _diagnostic_figures(dataset, runs_root: Path) -> None:
         if "attention" in available and "wind_speed" in available:
             diagnostics.attention_by_regime(
                 dataset, available, name=f"attention_{path.parent.name}"
+            )
+        if "attention_by_lag" in available:
+            diagnostics.attention_by_lag(
+                available, name=f"attention_by_lag_{path.parent.name}"
             )
         if "gate" in available:
             diagnostics.gate_by_patch(available, name=f"gate_{path.parent.name}")

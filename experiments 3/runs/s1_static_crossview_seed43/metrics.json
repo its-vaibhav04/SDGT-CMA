@@ -1,0 +1,53 @@
+{
+  "rows": [
+    {
+      "model": "s1_static_crossview",
+      "seed": 43,
+      "horizon": 1,
+      "mae": 10.489895820617676,
+      "rmse": 20.083675384521484,
+      "wape": 13.405939102172852,
+      "bias": 0.657877504825592
+    },
+    {
+      "model": "s1_static_crossview",
+      "seed": 43,
+      "horizon": 6,
+      "mae": 30.793807983398438,
+      "rmse": 51.06943130493164,
+      "wape": 39.37251663208008,
+      "bias": 1.7215120792388916
+    },
+    {
+      "model": "s1_static_crossview",
+      "seed": 43,
+      "horizon": 12,
+      "mae": 43.015174865722656,
+      "rmse": 68.83079528808594,
+      "wape": 55.04022216796875,
+      "bias": -0.3257840573787689
+    },
+    {
+      "model": "s1_static_crossview",
+      "seed": 43,
+      "horizon": 24,
+      "mae": 53.34546661376953,
+      "rmse": 80.62051391601562,
+      "wape": 68.40022277832031,
+      "bias": -0.20487600564956665
+    }
+  ],
+  "best_epoch": 5,
+  "best_val_mae": 32.204840660095215,
+  "epochs_run": 18,
+  "train_seconds": 95.26585984230042,
+  "parameters": {
+    "embedding": 1280,
+    "temporal": 33696,
+    "graph": 0,
+    "spatial": 2240,
+    "fusion": 10592,
+    "head": 27800,
+    "total": 75608
+  }
+}

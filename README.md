@@ -31,6 +31,14 @@ Three findings shape the whole design, and are worth knowing before reading any 
 
 ## Current status
 
+**For the full picture — achievements, findings, what remains, open risks — see
+[STATUS.md](STATUS.md).** The table below is the short version.
+
+**The Kaggle notebook is now the experiment's full narrative** — thirteen
+sections from configuration to conclusions, every analysis cell a single call
+into the tested `src/report.py` and `src/figures` modules. See
+[notebooks/kaggle_run_grid.py](notebooks/kaggle_run_grid.py).
+
 | Phase | State |
 |---|---|
 | 0 Environment and repo repair | done — git, pinned deps, UTF-8 coordinates, seeding, manifests |
@@ -39,17 +47,37 @@ Three findings shape the whole design, and are worth knowing before reading any 
 | 3 Temporal branch | done — patch transformer + TCN control, head, masked losses |
 | 4 Graph modules | done — static + lag-aware wind prior, 20 physics tests incl. the direction gate |
 | 5 Fusion and assembly | done — cross-view and parameter-matched concat, all five configs train |
-| 6 Experiment grid | **next — needs a GPU.** Code is verified end to end on CPU with `--smoke`. |
-| 7 Figures | mostly done — graph map, direction control, pollution rose, forecast traces, error-by-horizon, regime slices, station error map. Attention and gate plots are written and wait only on trained diagnostics. |
-| 8 Delhi | not started |
-| 9 Controls | not started |
+| 6 Experiment grid | **done — two full GPU runs.** Run 1 overfitted; Run 2 converged and is the reportable one. See [Run 2 findings](SDGT-CMA_Run2_Findings.md). |
+| 7 Figures | done — 18 figures, now including training curves, attention-by-lag and error-by-concentration. |
+| 8 Delhi | **on hold** (decision, 9 Sept 2026). Beijing-only for now: run the controls and write up the null result first. |
+| 9 Controls | **built, awaiting a GPU session.** Wind reversal, edge permutation, identity adjacency, station occlusion, plus two power references. See [docs/NEGATIVE_CONTROLS.md](docs/NEGATIVE_CONTROLS.md). |
 
-99 tests passing. The five-cell grid has been verified end to end; the numbers it
-has produced so far are from two-epoch wiring checks and mean nothing.
+221 tests passing. Headline result from Run 2, Beijing test year 2016-03 → 2017-02,
+MAE in ug/m3 (mean over seeds 42/43/44):
 
-**Boundary layer height is not yet included.** The ERA5 fetch is wired and cached
-but needs a Copernicus account; the builder runs without it and records the
-absence in the manifest.
+| model | h=1 | h=6 | h=12 | h=24 |
+|---|---:|---:|---:|---:|
+| persistence | 10.30 | 32.03 | 44.34 | 58.13 |
+| **LightGBM** | **9.35** | **28.19** | **39.02** | **50.82** |
+| t0 temporal only | 10.51 | 30.83 | 42.19 | 53.09 |
+| d1 wind graph + cross-view | 10.56 | 31.38 | 43.11 | 53.58 |
+
+No component of the spatial architecture produces a robust improvement over the
+purely temporal model on this network, and LightGBM remains the strongest
+forecaster. The graph nonetheless trains and behaves physically (learned mean
+transport lag 2.91 h against a measured 2 h advection peak). This is a measured
+null result, consistent with the pre-registered power analysis, not a training
+failure -- see [Run 2 findings](SDGT-CMA_Run2_Findings.md).
+
+**Boundary layer height is now included** (9 Sept 2026). The dataset carries
+**28 features**; ERA5 BLH sits at index 13, fetched for all 12 stations and
+shifted from UTC onto Beijing local time. Without a Copernicus token the builder
+still runs and records the feature's absence in the manifest.
+
+**The Run 2 results below predate it.** They were computed on the 27-feature
+dataset. Adding BLH changes the embedding's input width, so every Run 2
+checkpoint now refuses to load, and the grid, baselines and controls have to be
+recomputed together (~1.5 GPU-hours) before anything can be compared to them.
 
 ## Setup
 
@@ -58,7 +86,21 @@ python -m venv .venv
 .venv/Scripts/activate            # Windows;  source .venv/bin/activate elsewhere
 pip install torch --index-url https://download.pytorch.org/whl/cpu   # or cu121 for GPU
 pip install -e ".[dev]"
+pip install -e ".[era5]"          # optional: boundary layer height
 ```
+
+**To enable ERA5 boundary layer height**, install the `era5` extra above and put a
+Copernicus token in `~/.cdsapirc`:
+
+```
+url: https://cds.climate.copernicus.eu/api
+key: <your key from https://cds.climate.copernicus.eu/how-to-api>
+```
+
+The builder then fetches and caches it automatically. Without the token the
+pipeline runs unchanged and records the feature's absence in the manifest. Note
+that enabling it changes the feature count from 27 to 28, so every existing
+checkpoint is invalidated -- see the warning below.
 
 ## Pipeline
 

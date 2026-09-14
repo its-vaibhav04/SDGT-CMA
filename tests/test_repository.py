@@ -27,6 +27,11 @@ ROOT = Path(__file__).resolve().parent.parent
 # or generating them. Each one must be tracked by git.
 REQUIRED_IN_REPO = [
     "configs/stations_beijing.csv",
+    # The ERA5 cache is the second file of the stations.csv kind: derived data
+    # Kaggle cannot fetch for itself. Without it the notebook builds a
+    # 27-feature dataset and nothing it produces is comparable to a local run.
+    "data/raw/era5/beijing_blh.npy",
+    "data/raw/era5/beijing_blh_meta.json",
     "configs/base.yaml",
     "configs/model/t0.yaml",
     "configs/model/s0.yaml",
@@ -41,6 +46,7 @@ ENTRY_SCRIPTS = [
     "scripts/run_baselines.py",
     "scripts/run_grid.py",
     "scripts/make_figures.py",
+    "scripts/run_controls.py",
 ]
 
 
@@ -96,11 +102,14 @@ def test_large_artifacts_are_not_committed():
     as-is, so it has to exist in the repository even though it is generated.
     :func:`test_committed_notebook_matches_its_source` keeps it honest.
     """
+    # The one deliberate exception: the ERA5 cache, which is not regenerable
+    # on Kaggle (no Copernicus key) and is small. See REQUIRED_IN_REPO.
+    allowed = {"data/raw/era5/beijing_blh.npy"}
     offenders = [
         name
         for name in tracked_files()
-        if name.endswith((".npy", ".npz", ".pt", ".png"))
-        or "PRSA_Data_" in name
+        if (name.endswith((".npy", ".npz", ".pt", ".png")) or "PRSA_Data_" in name)
+        and name not in allowed
     ]
     assert not offenders, f"regenerable artifacts should not be tracked: {offenders}"
 
@@ -177,5 +186,56 @@ def test_notebook_source_declares_every_required_file():
     should be caught -- not eight cells later inside the builder.
     """
     source = (ROOT / "notebooks/kaggle_run_grid.py").read_text(encoding="utf-8")
-    for relative in ("configs/stations_beijing.csv", "configs/base.yaml"):
+    for relative in (
+        "configs/stations_beijing.csv",
+        "configs/base.yaml",
+        "data/raw/era5/beijing_blh.npy",
+    ):
         assert relative in source, f"notebook does not check for {relative}"
+
+
+def test_blh_cache_matches_the_built_dataset_shape():
+    """The committed cache must be the one the builder will actually accept."""
+    import json
+
+    import numpy as np
+
+    values = np.load(ROOT / "data/raw/era5/beijing_blh.npy")
+    meta = json.loads((ROOT / "data/raw/era5/beijing_blh_meta.json").read_text(encoding="utf-8"))
+    assert values.shape == (35064, 12), values.shape
+    assert list(values.shape) == meta["shape"]
+    assert meta["utc_offset_hours"] == 8, "cache must be on Beijing local time"
+    assert np.isfinite(values).all()
+    assert 0 < values.min() and values.max() < 10000, "boundary layer height in metres"
+
+
+def test_notebook_builds_with_era5_enabled():
+    """--no-era5 would quietly drop the 28th feature on Kaggle."""
+    source = (ROOT / "notebooks/kaggle_run_grid.py").read_text(encoding="utf-8")
+    assert "--no-era5" not in source, (
+        "the notebook must build with ERA5 on; the cache is committed so no key is needed"
+    )
+
+
+def test_notebook_brings_checkpoints_back():
+    """Run 2 excluded ``*.pt`` from the archive and stranded the controls.
+
+    The negative controls re-evaluate trained weights. Without a checkpoint they
+    cannot run anywhere except inside the Kaggle session that produced the
+    model, which is exactly the position Run 2 left us in. At the current
+    capacity a checkpoint is ~0.3 MB, so there is no longer a size argument for
+    dropping them.
+    """
+    source = (ROOT / "notebooks/kaggle_run_grid.py").read_text(encoding="utf-8")
+    assert '.pt' not in source.split("tarfile")[-1].split("print(")[0], (
+        "the packaging step is filtering out checkpoints again -- the negative "
+        "controls need trained weights to exist after the session ends"
+    )
+
+
+def test_notebook_runs_the_negative_controls():
+    """The controls are the experiment that makes the null result reportable."""
+    source = (ROOT / "notebooks/kaggle_run_grid.py").read_text(encoding="utf-8")
+    assert "scripts/run_controls.py" in source, (
+        "the notebook does not run the control suite"
+    )

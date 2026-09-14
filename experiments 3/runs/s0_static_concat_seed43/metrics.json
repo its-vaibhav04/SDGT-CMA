@@ -1,0 +1,53 @@
+{
+  "rows": [
+    {
+      "model": "s0_static_concat",
+      "seed": 43,
+      "horizon": 1,
+      "mae": 10.633440971374512,
+      "rmse": 20.21249008178711,
+      "wape": 13.589387893676758,
+      "bias": 0.5549364686012268
+    },
+    {
+      "model": "s0_static_concat",
+      "seed": 43,
+      "horizon": 6,
+      "mae": 30.86628532409668,
+      "rmse": 51.80091094970703,
+      "wape": 39.465187072753906,
+      "bias": 0.8525103330612183
+    },
+    {
+      "model": "s0_static_concat",
+      "seed": 43,
+      "horizon": 12,
+      "mae": 41.39786148071289,
+      "rmse": 65.27507781982422,
+      "wape": 52.97078323364258,
+      "bias": 0.22047531604766846
+    },
+    {
+      "model": "s0_static_concat",
+      "seed": 43,
+      "horizon": 24,
+      "mae": 51.970943450927734,
+      "rmse": 76.45706939697266,
+      "wape": 66.6377944946289,
+      "bias": 2.9086430072784424
+    }
+  ],
+  "best_epoch": 0,
+  "best_val_mae": 32.03767108917236,
+  "epochs_run": 13,
+  "train_seconds": 50.487309217453,
+  "parameters": {
+    "embedding": 1280,
+    "temporal": 33696,
+    "graph": 0,
+    "spatial": 2240,
+    "fusion": 9408,
+    "head": 27800,
+    "total": 74424
+  }
+}

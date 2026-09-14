@@ -1,0 +1,53 @@
+{
+  "rows": [
+    {
+      "model": "d1_wind_crossview",
+      "seed": 44,
+      "horizon": 1,
+      "mae": 10.616373062133789,
+      "rmse": 20.1593074798584,
+      "wape": 13.567574501037598,
+      "bias": -0.389272540807724
+    },
+    {
+      "model": "d1_wind_crossview",
+      "seed": 44,
+      "horizon": 6,
+      "mae": 31.8564510345459,
+      "rmse": 53.116485595703125,
+      "wape": 40.731197357177734,
+      "bias": -1.6261852979660034
+    },
+    {
+      "model": "d1_wind_crossview",
+      "seed": 44,
+      "horizon": 12,
+      "mae": 43.20781707763672,
+      "rmse": 70.7238540649414,
+      "wape": 55.286720275878906,
+      "bias": -2.8131043910980225
+    },
+    {
+      "model": "d1_wind_crossview",
+      "seed": 44,
+      "horizon": 24,
+      "mae": 52.908592224121094,
+      "rmse": 80.9044189453125,
+      "wape": 67.8400650024414,
+      "bias": -2.0947928428649902
+    }
+  ],
+  "best_epoch": 5,
+  "best_val_mae": 32.318932056427,
+  "epochs_run": 18,
+  "train_seconds": 370.618887424469,
+  "parameters": {
+    "embedding": 1280,
+    "temporal": 33696,
+    "graph": 2,
+    "spatial": 2306,
+    "fusion": 10592,
+    "head": 27800,
+    "total": 75676
+  }
+}

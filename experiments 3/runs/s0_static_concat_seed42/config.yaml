@@ -1,0 +1,58 @@
+seed: 42
+data:
+  city: beijing
+  lookback: 48
+  horizon: 24
+  patch_length: 8
+  patch_stride: 8
+model:
+  d_model: 32
+  n_heads: 4
+  dropout: 0.25
+  temporal:
+    type: patch_transformer
+    n_layers: 2
+    ffn_mult: 4
+  graph:
+    type: static
+    lag_max: 6
+    lag_min: 1
+    top_k: 4
+    distance_scale_km: 20.0
+    speed_scale: 2.0
+    min_speed: 0.5
+    calm_threshold: 0.001
+  spatial:
+    type: gcn
+    n_layers: 2
+    edge_dropout: 0.15
+  fusion:
+    type: concat
+  head:
+    hidden: 128
+    persistence_anchor: true
+train:
+  batch_size: 64
+  epochs: 60
+  grad_clip: 1.0
+  optimizer:
+    name: adamw
+    lr: 0.0003
+    weight_decay: 0.01
+  scheduler:
+    name: cosine
+    warmup_epochs: 0
+  loss:
+    name: huber
+    delta: 1.0
+  early_stopping:
+    monitor: val_mae_mean
+    patience: 12
+eval:
+  horizons:
+  - 1
+  - 6
+  - 12
+  - 24
+  save_diagnostics: true
+name: s0_static_concat

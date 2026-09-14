@@ -83,6 +83,10 @@ SPLIT_DATES = {
 }
 
 FORWARD_FILL_LIMIT = 3
+
+# PRSA timestamps are China Standard Time. ERA5 is UTC, so anything fetched from
+# it has to be shifted onto this clock before it can join the feature stack.
+UTC_OFFSET_HOURS = 8
 TIME_SINCE_CAP = 24
 
 
@@ -361,6 +365,7 @@ def build(
         n_hours=n_hours,
         start_date=SPLIT_DATES["train"][0],
         end_date=SPLIT_DATES["test"][1],
+        utc_offset_hours=UTC_OFFSET_HOURS,
         enabled=use_era5,
     )
 

@@ -314,3 +314,116 @@ def gate_by_patch(
 
     fig.suptitle("Fusion gate — which view the model leans on", fontsize=11)
     return style.save(fig, name, root)
+
+
+def attention_by_lag(
+    diagnostics: dict[str, np.ndarray],
+    *,
+    physical_peak_h: int = 2,
+    name: str = "attention_by_lag",
+    root: Path | str = style.FIGURE_ROOT,
+) -> Path:
+    """Share of cross-station attention at each transport lag.
+
+    The most direct test of the lag-aware design. The evidence review measured
+    the real station-to-station advection signal peaking at a 2 h lag. If the
+    learned attention piles up at lag 0 or 1 instead, the model is using the
+    graph as a same-hour association rather than as transport -- which is a
+    finding, and this is the figure that shows it.
+    """
+    import matplotlib.pyplot as plt
+
+    style.apply_style()
+    weights = diagnostics["attention_by_lag"]              # [n, L, N, N, K+1]
+    n_stations = weights.shape[2]
+    eye = np.eye(n_stations, dtype=bool)
+    cross = weights[:, :, ~eye, :].sum(axis=(0, 1, 2))     # [K+1], self dropped
+    share = cross / max(cross.sum(), 1e-12) * 100.0
+    lags = np.arange(len(share))
+
+    fig, axis = plt.subplots(figsize=(7.2, 4.0))
+    colours = [style.SERIES[0]] * len(share)
+    if 0 <= physical_peak_h < len(share):
+        colours[physical_peak_h] = style.SERIES[1]
+    axis.bar(lags, share, color=colours, width=0.7)
+    for lag, value in zip(lags, share):
+        axis.annotate(f"{value:.1f} %", (lag, value), ha="center", va="bottom", fontsize=8)
+    axis.set_xticks(lags)
+    axis.set_xlabel("transport lag (hours before the target hour)")
+    axis.set_ylabel("share of cross-station attention (%)")
+    axis.set_ylim(0, max(share) * 1.25)
+    axis.set_title(
+        f"Where the attention lands — learned peak at {int(np.argmax(share))} h, "
+        f"measured advection peak at {physical_peak_h} h"
+    )
+    axis.annotate("orange = the lag the data says transport peaks at",
+                  (0.99, 0.95), xycoords="axes fraction", ha="right", fontsize=8,
+                  color=style.SERIES[1])
+    return style.save(fig, name, root)
+
+
+def error_by_level(
+    runs: Sequence[Predictions],
+    *,
+    horizon: int = 24,
+    n_bins: int = 5,
+    name: str = "error_by_level",
+    root: Path | str = style.FIGURE_ROOT,
+) -> Path:
+    """MAE and signed bias inside quantile bins of the observed concentration.
+
+    Two panels, one message: where does the model fail. Bias drawn per bin is
+    the regression-to-the-mean signature made visible -- positive on clean
+    hours, strongly negative on the worst ones. That is the behaviour an
+    early-warning system is judged on, and a headline MAE hides it completely.
+    """
+    import matplotlib.pyplot as plt
+
+    from src.metrics import masked_bias
+
+    style.apply_style()
+    runs = list(runs)
+    if not runs:
+        raise ValueError("error_by_level needs at least one run")
+
+    index = horizon - 1
+    reference = runs[0]
+    observed = reference.truth[:, :, index][reference.mask[:, :, index]]
+    edges = np.quantile(observed, np.linspace(0, 1, n_bins + 1))
+    edges[-1] = np.inf
+    labels = [
+        f"{edges[i]:.0f}–{edges[i + 1]:.0f}" if np.isfinite(edges[i + 1]) else f"≥{edges[i]:.0f}"
+        for i in range(n_bins)
+    ]
+
+    fig, axes = plt.subplots(1, 2, figsize=(11.5, 4.2))
+    width = 0.8 / max(len(runs), 1)
+    for r_index, run in enumerate(runs):
+        p, t, m = run.pred[:, :, index], run.truth[:, :, index], run.mask[:, :, index]
+        maes, biases = [], []
+        for i in range(n_bins):
+            inside = m & (t >= edges[i]) & (t < edges[i + 1])
+            maes.append(masked_mae(p, t, inside) if inside.any() else np.nan)
+            biases.append(masked_bias(p, t, inside) if inside.any() else np.nan)
+        offsets = np.arange(n_bins) + (r_index - (len(runs) - 1) / 2) * width
+        colour = style.SERIES[r_index % len(style.SERIES)]
+        axes[0].bar(offsets, maes, width=width, color=colour, label=run.model)
+        axes[1].bar(offsets, biases, width=width, color=colour, label=run.model)
+
+    for axis, title, ylabel in (
+        (axes[0], "MAE by observed level", "MAE (μg/m³)"),
+        (axes[1], "Bias by observed level", "mean signed error (μg/m³)"),
+    ):
+        axis.set_xticks(range(n_bins))
+        axis.set_xticklabels(labels)
+        axis.set_xlabel("observed PM2.5 quintile (μg/m³)")
+        axis.set_ylabel(ylabel)
+        axis.set_title(title)
+    axes[1].axhline(0, color=style.REFERENCE_STRONG, linewidth=1.0)
+    axes[1].annotate("below zero = under-forecast", (0.02, 0.04), xycoords="axes fraction",
+                     fontsize=8, color=style.REFERENCE)
+    axes[0].legend(loc="upper left")
+
+    fig.suptitle(f"Where the error lives — h={horizon}, all stations, test year", fontsize=11)
+    fig.tight_layout()
+    return style.save(fig, name, root)

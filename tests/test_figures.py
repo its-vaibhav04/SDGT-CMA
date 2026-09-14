@@ -122,3 +122,85 @@ def test_every_reported_metric_works(metric, tmp_path):
     runs = [make_run("a"), make_run("b"), make_run("persistence")]
     written = forecast_trace.error_by_horizon(runs, metric=metric, name=metric, root=tmp_path)
     assert written[0].exists()
+
+
+# ------------------------------------------------------ the analysis figures
+def _synthetic_runs_root(tmp_path, with_curves: bool = True):
+    """Two grid configs x two seeds, plus persistence, with curves and metrics."""
+    import csv
+    import json
+
+    root = tmp_path / "runs"
+    for model, seeds, error in (
+        ("t0_temporal_only", (42, 43), 8.0),
+        ("d1_wind_crossview", (42, 43), 9.0),
+        ("persistence", (42,), 10.0),
+    ):
+        for seed in seeds:
+            run_dir = root / f"{model}_seed{seed}"
+            run_dir.mkdir(parents=True)
+            rows = [{"model": model, "seed": seed, "horizon": h, "mae": error, "rmse": error,
+                     "wape": 1.0, "bias": 0.0} for h in HORIZONS]
+            (run_dir / "metrics.json").write_text(json.dumps(
+                {"rows": rows, "best_epoch": 2, "best_val_mae": 30.0, "epochs_run": 5,
+                 "train_seconds": 60.0, "parameters": {"total": 10}}), encoding="utf-8")
+            make_run(model, seed).save(run_dir / "predictions.npz")
+            if with_curves and model != "persistence":
+                with open(run_dir / "curve.csv", "w", newline="", encoding="utf-8") as handle:
+                    writer = csv.DictWriter(handle, fieldnames=["epoch", "train_loss", "val_loss",
+                                                                "val_mae", "lr", "seconds"])
+                    writer.writeheader()
+                    for epoch in range(5):
+                        writer.writerow({"epoch": epoch, "train_loss": 0.3 - 0.02 * epoch,
+                                         "val_loss": 0.25, "val_mae": 30.0, "lr": 1e-4,
+                                         "seconds": epoch})
+    return root
+
+
+def test_loss_curves_draws_one_panel_per_config(tmp_path):
+    from src.figures import training
+
+    root = _synthetic_runs_root(tmp_path)
+    path = training.loss_curves(root, root=tmp_path / "figs")
+    assert path is not None and path.exists() and path.stat().st_size > 1000
+
+
+def test_loss_curves_returns_none_with_nothing_to_draw(tmp_path):
+    """The notebook calls this unconditionally; an empty root must not raise."""
+    from src.figures import training
+
+    assert training.loss_curves(tmp_path / "empty", root=tmp_path / "figs") is None
+    assert training.convergence_bars(tmp_path / "empty", root=tmp_path / "figs") is None
+
+
+def test_convergence_bars_draws(tmp_path):
+    from src.figures import training
+
+    root = _synthetic_runs_root(tmp_path)
+    path = training.convergence_bars(root, root=tmp_path / "figs")
+    assert path is not None and path.exists()
+
+
+def test_attention_by_lag_highlights_the_physical_peak(tmp_path):
+    from src.figures import diagnostics
+
+    rng = np.random.default_rng(0)
+    weights = rng.random((3, 4, 5, 5, 7))
+    path = diagnostics.attention_by_lag({"attention_by_lag": weights},
+                                        physical_peak_h=2, root=tmp_path)
+    assert path.exists()
+
+
+def test_error_by_level_draws_every_run_it_is_given(tmp_path):
+    from src.figures import diagnostics
+
+    runs = [make_run("persistence", offset=5.0), make_run("d1_wind_crossview", offset=-5.0)]
+    path = diagnostics.error_by_level(runs, horizon=24, root=tmp_path)
+    assert path.exists()
+
+
+def test_error_by_level_refuses_an_empty_run_list(tmp_path):
+    from src.figures import diagnostics
+
+    with pytest.raises(ValueError):
+        diagnostics.error_by_level([], root=tmp_path)
