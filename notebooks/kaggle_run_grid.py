@@ -89,7 +89,7 @@ else:
 #   1. already unpacked from an earlier cell run
 #   2. attached as a Kaggle Dataset (upload the repo as a zip; no Internet)
 #   3. git clone from REPO_URL (needs Settings -> Internet On)
-REPO_URL = "https://github.com/its-vaibhav04/research_project.git"
+REPO_URL = "https://github.com/its-vaibhav04/SDGT-CMA.git"
 
 import glob
 import os
@@ -128,6 +128,31 @@ os.chdir(PROJECT)
 if PROJECT not in sys.path:
     sys.path.insert(0, PROJECT)
 print("working directory:", os.getcwd())
+
+# --- prepare ERA5 cache -------------------------------------------------------
+
+ERA5_DEST = Path(PROJECT) / "data/raw/era5"
+ERA5_DEST.mkdir(parents=True, exist_ok=True)
+
+npy_matches = list(Path("/kaggle/input").glob("**/beijing_blh.npy"))
+meta_matches = list(Path("/kaggle/input").glob("**/beijing_blh_meta.json"))
+
+if not npy_matches:
+    raise FileNotFoundError(
+        "Could not find beijing_blh.npy under /kaggle/input"
+    )
+
+if not meta_matches:
+    raise FileNotFoundError(
+        "Could not find beijing_blh_meta.json under /kaggle/input"
+    )
+
+shutil.copy2(npy_matches[0], ERA5_DEST / "beijing_blh.npy")
+shutil.copy2(meta_matches[0], ERA5_DEST / "beijing_blh_meta.json")
+
+print("ERA5 cache prepared.")
+print("  ", ERA5_DEST / "beijing_blh.npy")
+print("  ", ERA5_DEST / "beijing_blh_meta.json")
 
 # %%
 # --- confirm the copy is complete --------------------------------------------

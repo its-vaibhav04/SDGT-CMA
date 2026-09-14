@@ -11,6 +11,16 @@ __pycache__/
 data/raw/*
 data/processed/*
 data/interim/*
+data/raw/era5/*.nc
+
+!data/raw/.gitkeep
+!data/raw/era5/
+!data/raw/era5/beijing_blh.npy
+!data/raw/era5/beijing_blh_meta.json
+
+!data/processed/.gitkeep
+!data/interim/.gitkeep
+
 experiments/runs/*
 experiments/checkpoints/*
 experiments/logs/*
@@ -43,3 +53,4 @@ experiments/figures/*
 sdgt-cma.zip
 *.tar.gz
 experiments 2
+experiments 3/

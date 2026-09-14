@@ -1,0 +1,29 @@
+{
+  "dataset": "reanalysis-era5-single-levels-timeseries",
+  "variable": "boundary_layer_height",
+  "start_date": "2013-03-01",
+  "end_date": "2017-02-28",
+  "utc_offset_hours": 8,
+  "request_window_utc": [
+    "2013-02-28",
+    "2017-02-28"
+  ],
+  "stations": [
+    "Aotizhongxin",
+    "Changping",
+    "Dingling",
+    "Dongsi",
+    "Guanyuan",
+    "Gucheng",
+    "Huairou",
+    "Nongzhanguan",
+    "Shunyi",
+    "Tiantan",
+    "Wanliu",
+    "Wanshouxigong"
+  ],
+  "shape": [
+    35064,
+    12
+  ]
+}
